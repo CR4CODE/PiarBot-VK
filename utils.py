@@ -5,6 +5,7 @@ from typing import Optional
 from urllib.parse import urlparse, unquote
 
 log = logging.getLogger(__name__)
+chat_log = logging.getLogger("chat")
 
 def is_owner(user_id: int) -> bool:
     """Проверка: является ли пользователь владельцем бота."""
@@ -156,11 +157,12 @@ def send(vk, peer_id: int, text: str, keyboard: Optional[str] = None,
         params["attachment"] = attachment
     try:
         result = vk.messages.send(**params)
-        if isinstance(result, dict):
-            return result.get("message_id")
-        return result
+        mid = result.get("message_id") if isinstance(result, dict) else result
+        chat_log.debug("OUT peer=%s -> %s", peer_id, text[:500])
+        return mid
     except Exception as e:
         log.warning("send failed peer=%s: %s", peer_id, e)
+        chat_log.debug("OUT-FAIL peer=%s err=%s text=%s", peer_id, e, text[:200])
         return None
 
 

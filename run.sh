@@ -166,12 +166,22 @@ cmd_unwatch() {
     echo "✅ Сторож остановлен"
 }
 
+cmd_chatlog() {
+    local chatlog="${BASEDIR:-.}/logs/chat.log"
+    if [ ! -f "$chatlog" ]; then
+        echo "ℹ️  Лог пуст: $chatlog"
+        return
+    fi
+    tail -n "${2:-80}" "$chatlog"
+}
+
 case "${1:-help}" in
     start)      cmd_start ;;
     stop)       cmd_stop ;;
     restart)    cmd_restart ;;
     status)     cmd_status ;;
     log)        cmd_log ;;
+    chatlog|cl) cmd_chatlog ;;
     foreground|fg) cmd_foreground ;;
     watch)      cmd_watch ;;
     unwatch)    cmd_unwatch ;;

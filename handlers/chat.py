@@ -13,6 +13,7 @@ import db
 from config import (
     CHAT_ADD_BONUS, CHAT_ADD_DAILY_LIMIT, CHAT_MILESTONES,
     LIST_SIZE_DEFAULT, WARN_DELETE_SECONDS, GREETING_LIFETIME,
+    SKIP_ADD_PRICE, PENDING_ADD_TTL,
 )
 from utils import (
     send, extract_vk_resource, looks_like_any_link,
@@ -603,6 +604,7 @@ def handle_link(vk, event) -> bool:
         return True
 
     if missing_mandatory or missing_active:
+        db.execute("INSERT OR REPLACE INTO pending_adds(user_id, peer_id, resource_id, resource_type, screen_name, title, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)", (user_id, peer_id, res["id"], res["type"], res["screen_name"], res["title"]))
         lines = [f"⚠️ {mention(user_id)}, ты не подписан на всё, что нужно.", ""]
         if missing_mandatory:
             lines.append("📌 Обязательные:")
@@ -614,6 +616,8 @@ def handle_link(vk, event) -> bool:
                 t = a["title"] or a["screen_name"]
                 lines.append(f"• {t} — https://vk.com/{a['screen_name']}")
         lines.append("\nПодпишись и пришли ссылку ещё раз.")
+        lines.append("")
+        lines.append(f"💸 Или пропусти проверку за {SKIP_ADD_PRICE} PP: /skip")
         send(vk, peer_id, "\n".join(lines))
         return True
 
@@ -937,6 +941,9 @@ def handle(vk, event) -> bool:
              "• За раунд капают Piar Points (PP)")
         return True
 
+    if text in ("/skip", "💸 Пропустить за 1500 PP", "💸 пропустить за 1500 pp"):
+        return cmd_skip(vk, event)
+
     if moderate(vk, event):
         return True
 
@@ -948,3 +955,69 @@ def handle(vk, event) -> bool:
 
 if __name__ == "__main__":
     print("=== chat.py OK ===")
+
+
+# ============================================================
+# ПЛАТНОЕ ДОБАВЛЕНИЕ В ОЧЕРЕДЬ (SKIP)
+# ============================================================
+
+def cmd_skip(vk, event) -> bool:
+    peer_id = event.peer_id
+    user_id = event.user_id
+
+    row = _get_chat(peer_id)
+    if not row:
+        return False
+
+    pending = db.query_one("SELECT * FROM pending_adds WHERE user_id=? AND peer_id=?", (user_id, peer_id))
+    if not pending:
+        send(vk, peer_id, f"🤷 Нет отложенной заявки. Пришли ссылку заново. {mention(user_id)}")
+        return True
+
+    try:
+        dt = datetime.strptime(pending["created_at"], "%Y-%m-%d %H:%M:%S")
+        age = (utcnow() - dt).total_seconds()
+    except Exception:
+        age = 0
+
+    if age > PENDING_ADD_TTL:
+        db.execute("DELETE FROM pending_adds WHERE user_id=? AND peer_id=?", (user_id, peer_id))
+        send(vk, peer_id, f"⏰ Заявка устарела. Пришли ссылку заново. {mention(user_id)}")
+        return True
+
+    u = db.get_user(user_id)
+    balance = u["balance"] if u else 0
+    if balance < SKIP_ADD_PRICE:
+        send(vk, peer_id, f"❌ Не хватает PP. Нужно {SKIP_ADD_PRICE}, у тебя {balance}. {mention(user_id)}")
+        return True
+
+    existing = db.query_one("SELECT * FROM channels WHERE peer_id=? AND user_id=?", (peer_id, user_id))
+    if existing:
+        db.execute("DELETE FROM pending_adds WHERE user_id=? AND peer_id=?", (user_id, peer_id))
+        send(vk, peer_id, f"ℹ️ Ты уже в раунде. {mention(user_id)}")
+        return True
+
+    import sqlite3 as _sqlite
+    try:
+        with db.transaction():
+            pos = db.query_one("SELECT COUNT(*) AS c FROM channels WHERE peer_id=? AND status='queue'", (peer_id,))["c"] + 1
+            db.execute("INSERT INTO channels(peer_id, user_id, resource_id, resource_type, screen_name, title, status, position) VALUES (?, ?, ?, ?, ?, ?, 'queue', ?)", (peer_id, user_id, pending["resource_id"], pending["resource_type"], pending["screen_name"], pending["title"], pos))
+            db.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (SKIP_ADD_PRICE, user_id))
+            db.execute("INSERT INTO rewards(user_id, peer_id, amount, reason) VALUES (?, ?, ?, 'skip_add')", (user_id, peer_id, -SKIP_ADD_PRICE))
+            db.execute("DELETE FROM pending_adds WHERE user_id=? AND peer_id=?", (user_id, peer_id))
+    except _sqlite.IntegrityError:
+        send(vk, peer_id, f"ℹ️ Ты уже в раунде. {mention(user_id)}")
+        return True
+
+    try:
+        vk.messages.delete(message_ids=event.message_id, delete_for_all=1)
+    except Exception as e:
+        log.warning("delete skip failed: %s", e)
+
+    title = pending["title"] or pending["screen_name"] or "ресурс"
+    msg_id = send(vk, peer_id, f"✅ Ты в очереди за {SKIP_ADD_PRICE} PP.\nРесурс: «{title}»\nПозиция: {pos}. {mention(user_id)}")
+    if msg_id:
+        schedule_delete(peer_id, msg_id, 30)
+
+    _recount_and_maybe_rotate(vk, peer_id)
+    return True

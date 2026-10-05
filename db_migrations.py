@@ -27,6 +27,18 @@ MIGRATIONS = {
     2: [
         "CREATE INDEX IF NOT EXISTS idx_users_balance ON users(balance DESC)",
     ],
+    3: [
+        """CREATE TABLE IF NOT EXISTS pending_adds (
+            user_id       INTEGER NOT NULL,
+            peer_id       INTEGER NOT NULL,
+            resource_id   INTEGER NOT NULL,
+            resource_type TEXT,
+            screen_name   TEXT,
+            title         TEXT,
+            created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, peer_id)
+        )""",
+    ],
 }
 
 

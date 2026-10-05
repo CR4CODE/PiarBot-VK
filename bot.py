@@ -11,6 +11,7 @@ from vk_api.longpoll import VkLongPoll, VkEventType
 import db
 from config import VK_GROUP_TOKEN, VK_GROUP_ID, BOT_LINK
 from utils import send, is_chat, to_chat_id
+from utils import chat_log
 import background
 import db_migrations
 from handlers import private as h_private
@@ -29,6 +30,13 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=_handlers,
 )
+
+_chat_handler = logging.FileHandler(LOG_DIR / "chat.log", encoding="utf-8")
+_chat_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+_chat_log = logging.getLogger("chat")
+_chat_log.setLevel(logging.DEBUG)
+_chat_log.addHandler(_chat_handler)
+_chat_log.propagate = False
 logging.getLogger("vk_api").setLevel(logging.WARNING)
 log = logging.getLogger("bot")
 log.setLevel(logging.DEBUG)
@@ -115,6 +123,7 @@ def main() -> None:
             if not is_chat(peer_id):
                 if not event.to_me:
                     continue
+                chat_log.debug("IN-LS  user=%s text=%s", user_id, text[:500])
                 info = get_user_info(vk, user_id)
                 h_private.handle(vk, event, info)
                 continue
@@ -123,6 +132,7 @@ def main() -> None:
             # ВАЖНО: для бесед to_me=False для обычных сообщений,
             # поэтому обрабатываем все входящие
             chat_id = to_chat_id(peer_id)
+            chat_log.debug("IN-CHAT chat=%s user=%s text=%s", chat_id, user_id, text[:500])
             log.debug("💬 chat=%s user=%s to_me=%s text=%r",
                       chat_id, user_id, event.to_me, text[:80])
 
