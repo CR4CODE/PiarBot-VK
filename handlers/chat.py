@@ -861,15 +861,33 @@ def greet_newbie(vk, peer_id: int, user_id: int) -> bool:
     if cur.rowcount == 0:
         return False
 
+    row = _get_chat(peer_id)
+    list_size = row["list_size"] if row else LIST_SIZE_DEFAULT
+    active_cnt = db.query_one(
+        "SELECT COUNT(*) AS c FROM channels "
+        "WHERE peer_id=? AND status='active'", (peer_id,))["c"]
+
+    if active_cnt > 0:
+        step1 = "1. Подпишись на всех из активного списка — /list"
+    else:
+        step1 = "1. Сейчас раунд пуст — стань первым участником!"
+
     text = (
-        f"👋 {mention(user_id)}, добро пожаловать в чат!\n"
+        f"👋 {mention(user_id)}, добро пожаловать в беседу взаимного пиара!\n"
         f"━━━━━━━━━━━━━━━━\n"
-        f"Здесь бот взаимного пиара: подписываешься на участников раунда — "
-        f"получаешь подписчиков на свой паблик.\n\n"
+        f"🤝 Как это работает:\n"
+        f"Все участники раунда подписываются друг на друга.\n"
+        f"Ты подписываешься на них — получаешь подписчиков на свой паблик.\n\n"
         f"📌 Что делать:\n"
-        f"• Напиши ссылку на свой паблик (vk.com/xxx) — попадёшь в раунд\n"
-        f"• /list — посмотреть текущий раунд\n"
-        f"• /help — команды"
+        f"{step1}\n"
+        f"2. Пришли ссылку на свой паблик (vk.com/xxx)\n"
+        f"3. Бот проверит подписки и добавит тебя в раунд\n"
+        f"4. За каждый раунд — награда в Piar Points (PP)\n\n"
+        f"⚠️ Важно:\n"
+        f"• В раунде {list_size} мест, при заполнении — очередь\n"
+        f"• После ротации присылай ссылку заново\n"
+        f"• Сторонние ссылки и флуд удаляются\n\n"
+        f"🔧 Все команды: /help"
     )
     msg_id = send(vk, peer_id, text)
     if msg_id:
