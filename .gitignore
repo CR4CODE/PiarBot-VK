@@ -1,0 +1,33 @@
+# Environment
+.env
+
+# Database
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.pid
+data/backups/
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Backups / patches
+*.pre-patch*
+*.bak*
+*.pre-*
+bot.py.pre-listen-patch
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Legacy db in root
+bot.db
+*.db
