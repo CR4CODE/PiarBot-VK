@@ -882,7 +882,11 @@ def cmd_news(vk, event, args: str) -> bool:
     if not args.strip():
         send(vk, event.peer_id,
              "📢 /news ТЕКСТ — рассылка всем юзерам\n"
-             "Например: /news 🎉 Обновление! Добавлен автопост статистики.")
+             "Например: /news 🎉 Обновление! Добавлен автопост статистики.\n\n"
+             "🆕 /release — система постов обновлений\n"
+             "  /release add Заголовок | Текст\n"
+             "  /release list / show N / del N\n"
+             "  /release wall N / chats N / all N")
         return True
     text = args.strip()
     send(vk, event.peer_id,

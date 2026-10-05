@@ -27,6 +27,20 @@ MIGRATIONS = {
     2: [
         "CREATE INDEX IF NOT EXISTS idx_users_balance ON users(balance DESC)",
     ],
+    4: [
+        """CREATE TABLE IF NOT EXISTS release_notes (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            title         TEXT NOT NULL,
+            body          TEXT NOT NULL,
+            created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            wall_post_id  INTEGER,
+            wall_at       TIMESTAMP,
+            chats_ok      INTEGER,
+            chats_fail    INTEGER,
+            chats_at      TIMESTAMP
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_release_notes_created ON release_notes(created_at DESC)",
+    ],
     3: [
         """CREATE TABLE IF NOT EXISTS pending_adds (
             user_id       INTEGER NOT NULL,

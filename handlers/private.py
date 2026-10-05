@@ -16,6 +16,7 @@ from config import (
 )
 from utils import send, group_url, user_url, mention, utcnow, is_owner
 from handlers import admin as h_admin
+import release
 
 log = logging.getLogger(__name__)
 
@@ -386,6 +387,11 @@ def handle(vk, event, user_info: dict) -> bool:
     # --- админка (проверяем ДО всего остального меню) ---
     if h_admin.handle(vk, event, user_info):
         return True
+
+    # --- /release ---
+    if text == "/release" or text.startswith("/release "):
+        args = text[len("/release"):].strip()
+        return release.handle_release(vk, event, args)
 
     # --- /start ---
     if text == "/start" or text.startswith("/start "):
