@@ -23,7 +23,7 @@ def main_menu(is_owner: bool = False) -> str:
         [_text("👥 Рефералы", "primary"), _text("💰 Купить PP", "positive")],
         [_text("📋 Все беседы", "secondary"), _text("📊 Топ участников", "secondary")],
         [_text("📢 Поделиться", "secondary"), _text("➕ Добавить в беседу", "secondary")],
-        [_text("ℹ️ Помощь", "secondary")],
+        [_text("ℹ️ Помощь", "secondary"), _text("🧰 KYNTRION", "primary")],
     ]
     if is_owner:
         rows.append([_text("🔧 Админ-панель", "negative")])

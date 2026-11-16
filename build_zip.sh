@@ -10,7 +10,8 @@ TMP=$(mktemp -d)
 echo "📦 Собираю архив..."
 mkdir -p "$TMP/$NAME/handlers" "$TMP/$NAME/data" "$TMP/$NAME/logs"
 
-for f in bot.py config.py db.py utils.py keyboards.py background.py \
+cp -R kyntrion_tools "$TMP/$NAME/"
+for f in bot.py config.py db.py utils.py keyboards.py background.py release.py \
          ad.py watch.py run.sh db_migrations.py requirements.txt README.md .env.example .gitignore; do
     [ -f "$f" ] && cp "$f" "$TMP/$NAME/" && echo "  + $f"
 done

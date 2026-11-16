@@ -16,6 +16,11 @@ import background
 import db_migrations
 from handlers import private as h_private
 from handlers import chat as h_chat
+from kyntrion_tools.vk_app import make_api
+from kyntrion_tools.vk_piar import PiarExtension
+import keyboards
+import os
+from utils import is_owner
 
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -62,13 +67,13 @@ def get_user_info(vk, user_id: int) -> dict:
     return info
 
 
-def safe_listen(longpoll, log):
+def safe_listen(longpoll, log, tick):
     """LongPoll с авто-переподключением."""
     while True:
         try:
-            for event in longpoll.listen():
+            for event in longpoll.check():
                 yield event
-            return
+            tick()
         except requests.exceptions.ReadTimeout:
             log.debug("LongPoll timeout, reconnect")
             time.sleep(1)
@@ -103,10 +108,19 @@ def main() -> None:
     background.start(vk)
     log.info("🔁 фоновые задачи запущены")
 
-    longpoll = VkLongPoll(session, group_id=VK_GROUP_ID)
+    longpoll = VkLongPoll(session, group_id=VK_GROUP_ID, wait=5)
+    env = dict(os.environ)
+    # PiarBot's owner is selected by its existing administrator configuration.
+    owner = db.get_config("owner_id", "0")
+    if owner and str(owner).isdecimal() and int(owner) > 0:
+        env["VK_OWNER_ID"] = str(owner)
+    else:
+        env.pop("VK_OWNER_ID", None)
+    extension = PiarExtension(make_api(env), VK_GROUP_ID,
+                              Path(__file__).parent / "data" / "kyntrion", env)
     log.info("👂 LongPoll запущен. ЛС: %s", BOT_LINK)
 
-    for event in safe_listen(longpoll, log):
+    for event in safe_listen(longpoll, log, extension.tick):
         try:
             if event.type != VkEventType.MESSAGE_NEW:
                 continue
@@ -117,6 +131,10 @@ def main() -> None:
             # пропускаем сообщения от сообществ/ботов (id < 0)
             if user_id < 0:
                 log.debug("skip non-user sender: %s", user_id)
+                continue
+
+            if extension.handle(event, lambda peer: send(
+                    vk, peer, "Главное меню PiarBot", keyboard=keyboards.main_menu(is_owner(peer)))):
                 continue
 
             # --- личка ---
