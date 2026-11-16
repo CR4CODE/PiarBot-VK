@@ -118,6 +118,7 @@ def main() -> None:
         env.pop("VK_OWNER_ID", None)
     extension = PiarExtension(make_api(env), VK_GROUP_ID,
                               Path(__file__).parent / "data" / "kyntrion", env)
+    log.info("KYNTRION ready group=%s", VK_GROUP_ID)
     log.info("👂 LongPoll запущен. ЛС: %s", BOT_LINK)
 
     for event in safe_listen(longpoll, log, extension.tick):

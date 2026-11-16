@@ -293,4 +293,3 @@ class TelegramApi:
             b"".join(chunks),
             f"multipart/form-data; boundary={boundary}",
         )
-

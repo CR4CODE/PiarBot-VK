@@ -3,6 +3,9 @@
 ### Инструменты KYNTRION в go_gigi
 
 В сообщениях сообщества откройте **🧰 KYNTRION** или введите `/kyntrion`.
+Модули в `kyntrion_tools/` адаптированы из релиза
+[`779a75c` проекта CR4CODE/KYNTRION](https://github.com/CR4CODE/Termux-Assistant-AI/tree/779a75c9363cb67d5e55a9871df9615c1fc9090e/integrations/whieda-text-bot).
+К ним применяется лицензия из `kyntrion_tools/LICENSE`.
 Команда `/piar` возвращает клавиатуру PiarBot. Приглашения `/start <код>`
 обрабатывает кабинет PiarBot. Расширение получает сообщения из того же
 цикла Long Poll. Для него не нужно регистрировать второй сервер событий.
