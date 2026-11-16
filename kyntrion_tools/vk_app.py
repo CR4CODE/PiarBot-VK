@@ -53,6 +53,20 @@ def make_api(env):
     return VkApi(token, group_id, transcriber=asr)
 
 
+def owner_wall_api(token, group_id, owner):
+    if not token:
+        return None
+    api = VkApi(token, group_id)
+
+    def call(method, **params):
+        users = api.call("users.get")
+        if not users or users[0].get("id") != owner:
+            raise VkApiError("Ключ стены принадлежит другому владельцу")
+        return api.call(method, **params)
+
+    return call
+
+
 @contextmanager
 def features(api, group_id, state_dir, env):
     root = Path(state_dir) / str(group_id)
@@ -72,8 +86,7 @@ def features(api, group_id, state_dir, env):
             ai = (AIClient(env["VK_CONSULT_URL"], env.get("VK_WORKER_SECRET", ""))
                   if env.get("VK_CONSULT_URL") else None)
             from kyntrion_tools.vk_studio import VKPostStudio
-            wall = (VkApi(env["VK_WALL_TOKEN"], group_id).call
-                    if env.get("VK_WALL_TOKEN") else None)
+            wall = owner_wall_api(env.get("VK_WALL_TOKEN"), group_id, owner)
             studio = VKPostStudio(api, manage(PostStudioStore(root / "studio.sqlite3")),
                                   group_id, owner, wall_call=wall)
             options.update(portfolio=PortfolioAddon(marketing), catalog=CatalogAddon(marketing),

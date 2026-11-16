@@ -13,14 +13,20 @@ from kyntrion_tools.vk_app import PollState, consume, features
 
 
 class PiarExtension:
-    def __init__(self, api, group_id, state_dir, env):
+    def __init__(self, api, group_id, state_dir, env, owner_lookup=None):
         self.api = api
         self.group_id = group_id
+        self.owner_lookup = owner_lookup
+        self.state_dir = state_dir
+        self.env = dict(env)
+        if owner_lookup is not None:
+            self.env["VK_OWNER_ID"] = self._live_owner()
         api.text_buttons = True
         self.resources = ExitStack()
         try:
-            self.controller, self.marketing, self.options = self.resources.enter_context(
-                features(api, group_id, state_dir, env))
+            self.feature_resources = self.resources.enter_context(ExitStack())
+            self.controller, self.marketing, self.options = self.feature_resources.enter_context(
+                features(api, group_id, state_dir, self.env))
             path = Path(state_dir) / str(group_id) / "poll.sqlite3"
             self.db = self.resources.enter_context(closing(sqlite3.connect(path)))
             self.state = PollState(self.db)
@@ -33,9 +39,33 @@ class PiarExtension:
     def close(self):
         self.resources.close()
 
+    def _live_owner(self):
+        value = str(self.owner_lookup())
+        return value if value.isascii() and value.isdecimal() and int(value) > 0 else ""
+
+    def _sync_owner(self):
+        if self.owner_lookup is None:
+            return
+        owner = self._live_owner()
+        if owner == self.env["VK_OWNER_ID"]:
+            return
+        # The same polling thread handles PiarBot /setowner and tools events.
+        # Rebind CRM, notifications and scheduled wall jobs before the next action.
+        env = {**self.env, "VK_OWNER_ID": owner}
+        env.pop("VK_WALL_TOKEN", None)
+        with ExitStack() as pending:
+            controller, marketing, options = pending.enter_context(
+                features(self.api, self.group_id, self.state_dir, env))
+            controller.sessions = self.controller.sessions
+            controller.archive_sessions = self.controller.archive_sessions
+            self.feature_resources.close()
+            self.feature_resources.enter_context(pending.pop_all())
+            self.controller, self.marketing, self.options, self.env = controller, marketing, options, env
+
     def tick(self):
         if time.monotonic() < self.next_tick:
             return
+        self._sync_owner()
         self.next_tick = time.monotonic() + 5
         self.options["voice_router"].flush_completed()
         studio = self.options.get("post_studio")
@@ -73,6 +103,7 @@ class PiarExtension:
         group_command = peer > 2_000_000_000 and parse_dot(text) is not None
         if not (enter or active or group_command):
             return False
+        self._sync_owner()
 
         # User Long Poll only includes attachment flags and abbreviated text.
         # VK's message object supplies reply, forwards, signed media links and CMID.

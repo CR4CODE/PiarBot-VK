@@ -93,6 +93,17 @@ class PiarToolsTests(unittest.TestCase):
         self.assertEqual((method, edit["cmid"]), ("messages.edit", expected_id))
         self.assertFalse(self.send(button["label"], uid=6, payload=button["payload"]))
 
+    def test_owner_transfer_revokes_old_panel_and_preserves_collect(self):
+        self.ext.owner_lookup = lambda: "5"
+        self.send("/kyntrion")
+        self.send("/collect")
+        self.send("до передачи")
+        self.ext.owner_lookup = lambda: "6"
+        self.send("/done")
+        self.assertEqual(self.docs[-1][2].decode(), "до передачи")
+        self.assertEqual(self.ext.options["notifications_panel"].owner_id, 6)
+        self.assertEqual(self.ext.options["post_studio"].owner_id, 6)
+
     def test_original_archive_bytes_and_voice_transcript(self):
         self.send("/kyntrion")
         self.api.download_file = lambda url, **kwargs: b"example"

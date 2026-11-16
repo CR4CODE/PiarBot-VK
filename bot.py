@@ -110,14 +110,9 @@ def main() -> None:
 
     longpoll = VkLongPoll(session, group_id=VK_GROUP_ID, wait=5)
     env = dict(os.environ)
-    # PiarBot's owner is selected by its existing administrator configuration.
-    owner = db.get_config("owner_id", "0")
-    if owner and str(owner).isdecimal() and int(owner) > 0:
-        env["VK_OWNER_ID"] = str(owner)
-    else:
-        env.pop("VK_OWNER_ID", None)
     extension = PiarExtension(make_api(env), VK_GROUP_ID,
-                              Path(__file__).parent / "data" / "kyntrion", env)
+                              Path(__file__).parent / "data" / "kyntrion", env,
+                              owner_lookup=lambda: db.get_config("owner_id", "0"))
     log.info("KYNTRION ready group=%s", VK_GROUP_ID)
     log.info("👂 LongPoll запущен. ЛС: %s", BOT_LINK)
 
