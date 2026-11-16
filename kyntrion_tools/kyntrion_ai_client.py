@@ -39,6 +39,7 @@ class AIClient:
         payload = json.dumps({"category": category, "messages": messages}, ensure_ascii=False).encode()
         request = Request(self.url, data=payload, headers={
             "Content-Type": "application/json", "X-Kyntrion-Bot-Token": self.token,
+            "User-Agent": "KYNTRION-TextBot/1.0",
         }, method="POST")
         try:
             with self.opener(request, timeout=12) as response:
