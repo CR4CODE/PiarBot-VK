@@ -13,10 +13,11 @@ from kyntrion_tools.vk_app import PollState, consume, features
 
 
 class PiarExtension:
-    def __init__(self, api, group_id, state_dir, env, owner_lookup=None):
+    def __init__(self, api, group_id, state_dir, env, owner_lookup=None, community_wall=None):
         self.api = api
         self.group_id = group_id
         self.owner_lookup = owner_lookup
+        self.community_wall = community_wall
         self.state_dir = state_dir
         self.env = dict(env)
         if owner_lookup is not None:
@@ -26,7 +27,7 @@ class PiarExtension:
         try:
             self.feature_resources = self.resources.enter_context(ExitStack())
             self.controller, self.marketing, self.options = self.feature_resources.enter_context(
-                features(api, group_id, state_dir, self.env))
+                features(api, group_id, state_dir, self.env, community_wall))
             path = Path(state_dir) / str(group_id) / "poll.sqlite3"
             self.db = self.resources.enter_context(closing(sqlite3.connect(path)))
             self.state = PollState(self.db)
@@ -55,7 +56,7 @@ class PiarExtension:
         env.pop("VK_WALL_TOKEN", None)
         with ExitStack() as pending:
             controller, marketing, options = pending.enter_context(
-                features(self.api, self.group_id, self.state_dir, env))
+                features(self.api, self.group_id, self.state_dir, env, self.community_wall))
             controller.sessions = self.controller.sessions
             controller.archive_sessions = self.controller.archive_sessions
             self.feature_resources.close()

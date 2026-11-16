@@ -9,6 +9,7 @@ import zipfile
 
 from kyntrion_tools.vk_api import VkApi
 from kyntrion_tools.vk_piar import PiarExtension
+from kyntrion_tools.post_studio_scheduler import run_due
 from setup_wall import check_owner, save_token
 
 
@@ -43,7 +44,9 @@ class PiarToolsTests(unittest.TestCase):
         self.api.call = self.call
         self.api.send_document = lambda peer, name, data, *a, **kw: self.docs.append((peer, name, data))
         self.back = Mock()
-        self.ext = PiarExtension(self.api, 7, Path(tmp.name), {"VK_OWNER_ID": "5"})
+        self.wall = Mock(return_value={"post_id": 42})
+        self.ext = PiarExtension(self.api, 7, Path(tmp.name), {"VK_OWNER_ID": "5"},
+                                 community_wall=self.wall)
         self.addCleanup(self.ext.close)
 
     def call(self, method, **params):
@@ -119,7 +122,6 @@ class PiarToolsTests(unittest.TestCase):
 
     def test_wall_requires_confirmation_and_owner(self):
         studio = self.ext.options["post_studio"]
-        studio.wall_call = Mock(return_value={"post_id": 42})
         draft = studio.store.create_draft(5, -7)
         studio.store.patch_draft(5, draft, {"text": "Новая запись"}, 1)
         token = studio.request_publish(5, draft)
@@ -129,3 +131,15 @@ class PiarToolsTests(unittest.TestCase):
         studio.confirm_publish(5, token)
         studio.wall_call.assert_called_once_with("wall.post", owner_id=-7, from_group=1,
                                                 message="Новая запись", attachments="")
+
+    def test_moscow_schedule_uses_host_wall_once(self):
+        studio = self.ext.options["post_studio"]
+        draft = studio.store.create_draft(5, -7)
+        studio.store.patch_draft(5, draft, {"text": "Запись по расписанию"}, 1)
+        studio.store.set_timezone(5, "Europe/Moscow")
+        job = studio.schedule_draft(5, draft, "2030-04-03 15:00")
+        self.assertEqual(run_due(studio, studio.store, "2030-04-03T11:59:00+00:00"), [])
+        self.assertEqual(run_due(studio, studio.store, "2030-04-03T12:00:00+00:00"), [(job, "published")])
+        self.assertEqual(run_due(studio, studio.store, "2030-04-03T12:01:00+00:00"), [])
+        self.wall.assert_called_once_with("wall.post", owner_id=-7, from_group=1,
+                                          message="Запись по расписанию", attachments="")

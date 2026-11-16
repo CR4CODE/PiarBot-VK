@@ -68,7 +68,7 @@ def owner_wall_api(token, group_id, owner):
 
 
 @contextmanager
-def features(api, group_id, state_dir, env):
+def features(api, group_id, state_dir, env, community_wall=None):
     root = Path(state_dir) / str(group_id)
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     owner = positive_id(env, "VK_OWNER_ID") if env.get("VK_OWNER_ID") else None
@@ -86,7 +86,7 @@ def features(api, group_id, state_dir, env):
             ai = (AIClient(env["VK_CONSULT_URL"], env.get("VK_WORKER_SECRET", ""))
                   if env.get("VK_CONSULT_URL") else None)
             from kyntrion_tools.vk_studio import VKPostStudio
-            wall = owner_wall_api(env.get("VK_WALL_TOKEN"), group_id, owner)
+            wall = owner_wall_api(env.get("VK_WALL_TOKEN"), group_id, owner) or community_wall
             studio = VKPostStudio(api, manage(PostStudioStore(root / "studio.sqlite3")),
                                   group_id, owner, wall_call=wall)
             options.update(portfolio=PortfolioAddon(marketing), catalog=CatalogAddon(marketing),

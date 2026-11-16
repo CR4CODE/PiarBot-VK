@@ -177,7 +177,14 @@ class VKPostStudio(PostStudioService):
     @staticmethod
     def is_api_rejection(exc):
         return isinstance(exc, VkApiError) and bool(re.fullmatch(
-            r"VK wall\.(?:post|edit|delete): (?:5|7|15|100|214|222)", str(exc)))
+            r"VK wall\.(?:post|edit|delete): (?:5|7|15|27|100|214|222)", str(exc)))
+
+    def _notify_publish(self, owner_id, state):
+        if state == "failed":
+            self._private_message(owner_id, "ВК отклонил публикацию. Проверьте права на стену. "
+                                  "Если нужен ключ владельца с правом wall, на Realme есть setup_wall.py.")
+            return
+        super()._notify_publish(owner_id, state)
 
     def _manage_actions(self, publication, kind, payload):
         self._require_wall()
