@@ -18,7 +18,7 @@ mkdir -p "$TMP_DIR/logs"
 
 # Код
 cp -R kyntrion_tools "$TMP_DIR/"
-cp ad.py db_migrations.py release.py "$TMP_DIR/"
+cp ad.py db_migrations.py release.py setup_wall.py "$TMP_DIR/"
 cp bot.py           "$TMP_DIR/"
 cp config.py        "$TMP_DIR/"
 cp db.py            "$TMP_DIR/"

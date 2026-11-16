@@ -4,11 +4,31 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import zipfile
 
 from kyntrion_tools.vk_api import VkApi
 from kyntrion_tools.vk_piar import PiarExtension
+from setup_wall import check_owner, save_token
+
+
+class WallSetupTests(unittest.TestCase):
+    def test_reject_other_user_or_wrong_wall(self):
+        with patch("setup_wall.VkApi") as factory:
+            factory.return_value.call.side_effect = [[{"id": 16}]]
+            with self.assertRaises(ValueError):
+                check_owner("dummy", 7, 5)
+            factory.return_value.call.side_effect = [[{"id": 5}], 8192,
+                                                     {"groups": [{"id": 8, "admin_level": 3}]}]
+            with self.assertRaises(ValueError):
+                check_owner("dummy", 7, 5)
+
+    def test_save_changes_only_wall_token(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / ".env"
+            path.write_text("VK_GROUP_ID=7\nVK_WALL_TOKEN=old\n", encoding="utf-8")
+            save_token(path, "replacement")
+            self.assertEqual(path.read_text().splitlines(), ["VK_GROUP_ID=7", "VK_WALL_TOKEN=replacement"])
 
 
 class PiarToolsTests(unittest.TestCase):
