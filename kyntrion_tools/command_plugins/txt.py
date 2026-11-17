@@ -17,7 +17,7 @@ def handle(ctx: CommandContext) -> None:
         # Preserves the legacy group command's no-reply lifecycle behavior.
         ctx.delegate_private("/done")
     else:
-        ctx.api.send_message(ctx.chat_id, help_text("txt"))
+        ctx.api.send_message(ctx.chat_id, help_text("txt", api=ctx.api))
 
 
 GUIDE = (

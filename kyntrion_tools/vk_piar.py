@@ -4,12 +4,32 @@ from contextlib import ExitStack, closing
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 import sqlite3
 import time
 
 from kyntrion_tools.command_catalog import parse_dot
 from kyntrion_tools.post_studio_scheduler import run_due
+from kyntrion_tools.vk_api import VkApiError
 from kyntrion_tools.vk_app import PollState, consume, features
+from kyntrion_tools.vk_events import group_command_text
+
+
+def _button_payload(raw):
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, RecursionError):
+            return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _partner_source(ref):
+    if isinstance(ref, str):
+        match = re.fullmatch(r"kyn_([A-Za-z0-9_-]{1,64})", ref)
+        if match:
+            return match.group(1)
+    return ""
 
 
 class PiarExtension:
@@ -91,44 +111,63 @@ class PiarExtension:
             return False
         text = (event.text or "").strip()
         private = peer == user and event.to_me
-        enter = private and text.casefold() in ("/kyntrion", "🧰 kyntrion")
+        words = text.split(maxsplit=1)
+        command = words[0].casefold() if words else ""
+        enter = private and (command == "/kyntrion" or text.casefold() == "🧰 kyntrion")
+        ref_hint = getattr(event, "ref", None)
+        client_start = private and (bool(_partner_source(ref_hint))
+                                    or text.casefold() in ("начать", "start")
+                                    or _button_payload(getattr(event, "payload", None)).get("command") == "start")
         active = private and self.db.execute(
             "SELECT 1 FROM tools_dialog WHERE peer=?", (peer,)).fetchone()
-        if active and (text in ("/piar", "⬅️ В меню PiarBot", "⬅️ В меню")
-                       or text.split(maxsplit=1)[:1] == ["/start"]):
+        if private and command == "/start" and (len(words) > 1 or not client_start):
+            if active:
+                self._leave(peer)
+            return False
+        if active and text in ("/piar", "⬅️ В меню PiarBot", "⬅️ В меню"):
             self._leave(peer)
-            if text.startswith("/start"):
-                return False
             back_to_piar(peer)
             return True
-        group_command = peer > 2_000_000_000 and parse_dot(text) is not None
-        if not (enter or active or group_command):
+        group_command = (peer > 2_000_000_000
+                         and parse_dot(group_command_text(text, self.group_id)) is not None)
+        managed = bool(enter or active or group_command)
+        if not (managed or client_start):
             return False
         self._sync_owner()
 
         # User Long Poll only includes attachment flags and abbreviated text.
         # VK's message object supplies reply, forwards, signed media links and CMID.
-        response = self.api.call("messages.getById", message_ids=event.message_id)
+        try:
+            response = self.api.call("messages.getById", message_ids=event.message_id)
+        except VkApiError:
+            if managed:
+                raise
+            return False
         items = response.get("items", []) if isinstance(response, dict) else []
-        if len(items) != 1:
-            return True
+        if not isinstance(items, list) or len(items) != 1 or not isinstance(items[0], dict):
+            return managed
         msg = items[0]
         if (msg.get("out") or msg.get("peer_id") != peer or msg.get("from_id") != user
                 or msg.get("id") != event.message_id or not msg.get("conversation_message_id")):
-            return True
+            return managed
         cmid = msg["conversation_message_id"]
-        if enter:
+        payload = _button_payload(msg.get("payload"))
+        source = _partner_source(msg.get("ref", ref_hint)) if private else ""
+        if enter or source:
+            if command == "/kyntrion" and len(words) > 1:
+                source = words[1]
             with self.db:
                 self.db.execute("INSERT OR IGNORE INTO tools_dialog VALUES(?)", (peer,))
-            msg = {**msg, "text": "/start"}
+            # The shared dispatcher validates the source and counts this CMID once.
+            # Remove VK's start payload so normalization keeps the decoded source.
+            payload = {}
+            msg = {**msg, "text": "/start " + source if source else "/start", "payload": payload}
+        elif client_start and (not active or payload.get("command") == "start"):
+            if active:
+                self._leave(peer)
+            return False
         envelope = {"type": "message_new", "group_id": self.group_id, "object": {"message": msg}}
-        payload = msg.get("payload")
-        if isinstance(payload, str):
-            try:
-                payload = json.loads(payload)
-            except ValueError:
-                payload = None
-        if private and isinstance(payload, dict) and payload.get("kyntrion") == 1 and "origin" in payload:
+        if private and payload.get("kyntrion") == 1 and "origin" in payload:
             origin = self.api.button_origin(peer, payload["origin"])
             if not origin:
                 if self.state.claim(envelope):

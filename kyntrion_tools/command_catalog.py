@@ -121,10 +121,14 @@ GUIDES = {
 }
 
 
-def help_text(topic: str = "") -> str:
+def help_text(topic: str = "", *, api=None) -> str:
     if not topic:
         return navigation_text()
     normalized = canonical_topic(topic)
+    if getattr(api, "platform", None) == "vk":
+        from kyntrion_tools.vk_menu import VK_GUIDES
+        if normalized in VK_GUIDES:
+            return VK_GUIDES[normalized]
     if normalized in GUIDES:
         return GUIDES[normalized]
     return "Не нашёл такую команду. Отправь .help или .хелп для общего списка."

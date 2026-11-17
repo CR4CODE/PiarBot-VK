@@ -10,7 +10,7 @@ def handle(ctx: CommandContext) -> None:
     if isinstance(voice, dict) and isinstance(voice.get("file_id"), str):
         ctx.controller.transcribe_voice_to_private(ctx.chat_id, voice)
     else:
-        ctx.api.send_message(ctx.chat_id, help_text("text"))
+        ctx.api.send_message(ctx.chat_id, help_text("text", api=ctx.api))
 
 
 GUIDE = (

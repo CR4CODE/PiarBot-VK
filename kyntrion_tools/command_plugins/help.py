@@ -5,7 +5,7 @@ from .contracts import CommandContext, CommandSpec
 
 def handle(ctx: CommandContext) -> None:
     from kyntrion_tools.command_catalog import help_keyboard, help_text
-    ctx.api.send_message(ctx.chat_id, help_text(ctx.argument),
+    ctx.api.send_message(ctx.chat_id, help_text(ctx.argument, api=ctx.api),
                          reply_markup=help_keyboard(ctx.argument))
 
 

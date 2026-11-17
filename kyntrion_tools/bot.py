@@ -228,7 +228,8 @@ class BotController:
             return
         content = media_description(message) or extract_text(message)
         if content is None:
-            self.api.send_message(chat_id, "В выбранном сообщении нет доступного текста. " + help_text("txt"))
+            self.api.send_message(chat_id, "В выбранном сообщении нет доступного текста. " +
+                                  help_text("txt", api=self.api))
             return
         if len(content.encode("utf-8")) > self.max_bytes:
             self.api.send_message(chat_id, "⚠️ Превышен лимит TXT (8 МБ).")

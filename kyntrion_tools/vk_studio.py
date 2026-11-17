@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from kyntrion_tools.bot_menu import POST_STUDIO_EDITOR_ACTIONS
+from kyntrion_tools.command_catalog import parse_dot
 from kyntrion_tools.post_studio import PostStudioService
 from kyntrion_tools.post_studio_render import _keyboard, _length, _media, _text
 from kyntrion_tools.vk_api import VkApiError
@@ -137,6 +138,15 @@ class VKPostStudio(PostStudioService):
                 self._private_message(actor, "Студия стены сообщества доступна владельцу.")
                 return True
             return False
+        # A VK attachment carries its caption in the message text. The
+        # normalizer preserves album order and puts the text on the first item.
+        text = message.get("text")
+        if (not callback and (message.get("photo") or message.get("video"))
+                and isinstance(text, str) and not text.lstrip().startswith("/")
+                and parse_dot(text) is None):
+            session = self.store.get_session(actor)
+            if session and session["step"] in ("editing", "media"):
+                return self._capture_media(actor, {**message, "caption": text})
         return super().handle_update(update)
 
     def request_publish(self, owner_id, draft_id):
@@ -166,7 +176,9 @@ class VKPostStudio(PostStudioService):
         if method != "wall.delete":
             params.update(message=action["message"], attachments=action["attachments"])
         result = self.wall_call(method, **params)
-        if method == "wall.delete" and type(result) is int and result == 1:
+        # PiarBot uses 5.92, where edit and delete both acknowledge with 1.
+        # A 5.199 owner session returns the edited post ID explicitly.
+        if method in ("wall.edit", "wall.delete") and type(result) is int and result == 1:
             return {"message_id": params["post_id"]}
         post_id = result.get("post_id") if isinstance(result, dict) else None
         if (method == "wall.delete" or type(post_id) is not int or post_id <= 0

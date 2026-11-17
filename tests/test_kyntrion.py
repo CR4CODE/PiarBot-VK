@@ -107,6 +107,20 @@ class PiarToolsTests(unittest.TestCase):
         self.assertEqual(self.ext.options["notifications_panel"].owner_id, 6)
         self.assertEqual(self.ext.options["post_studio"].owner_id, 6)
 
+    def test_addressed_group_command_returns_selected_text_to_its_sender(self):
+        peer = 2_000_000_001
+        event = SimpleNamespace(peer_id=peer, user_id=5, from_me=False, to_me=False,
+                                message_id=17, text="[club99|Другой бот], .txt")
+        self.assertFalse(self.ext.handle(event, self.back))
+        event.text = "[club7|Наш бот], .txt"
+        self.messages[17] = {"id": 17, "conversation_message_id": 117,
+                             "peer_id": peer, "from_id": 5, "text": event.text,
+                             "reply_message": {"peer_id": peer, "from_id": 8, "text": "текст"}}
+        self.api.delete_message = Mock(return_value=True)
+        self.assertTrue(self.ext.handle(event, self.back))
+        self.api.delete_message.assert_called_once_with(peer, 117)
+        self.assertEqual((self.docs[0][0], self.docs[0][2].decode()), (5, "текст"))
+
     def test_original_archive_bytes_and_voice_transcript(self):
         self.send("/kyntrion")
         self.api.download_file = lambda url, **kwargs: b"example"
@@ -119,6 +133,20 @@ class PiarToolsTests(unittest.TestCase):
             "owner_id": 5, "id": 7, "duration": 2, "transcript": "Готово",
             "link_ogg": "https://cdn.userapi.com/a.ogg"}}])
         self.assertTrue(any(b"\xd0\x93\xd0\xbe" in contents for _, _, contents in self.docs))
+
+    def test_zip_reply_keeps_every_document_in_selected_vk_message(self):
+        self.send("/kyntrion")
+        self.api.download_file = lambda url, **kwargs: url.rsplit("/", 1)[-1].encode()
+        attachments = [
+            {"type": "doc", "doc": {"owner_id": 5, "id": i, "title": "текст.txt",
+                                   "url": f"https://cdn.userapi.com/{i}"}}
+            for i in (11, 12)
+        ]
+        self.send(".zip", reply_message={"peer_id": 5, "from_id": 8, "attachments": attachments})
+        self.assertEqual(len(self.docs), 1)
+        with zipfile.ZipFile(io.BytesIO(self.docs[0][2])) as archive:
+            self.assertEqual(archive.read("текст.txt"), b"11")
+            self.assertEqual(archive.read("текст (2).txt"), b"12")
 
     def test_wall_requires_confirmation_and_owner(self):
         studio = self.ext.options["post_studio"]

@@ -74,16 +74,16 @@ def _keyboard_pages(markup):
     if not inline:
         return [{"one_time": bool(markup.get("one_time_keyboard")), "buttons": rows}]
     if len(rows) <= 6 and sum(map(len, rows)) <= 10:
-        return [{"inline": True, "buttons": rows}]
+        return [{"inline": True, "one_time": False, "buttons": rows}]
     # Reserve a row and two controls per page. A page switch edits the same message.
     pages, buttons, count = [], [], 0
     for row in rows:
         if len(buttons) >= 5 or count + len(row) > 8:
-            pages.append({"inline": True, "buttons": buttons})
+            pages.append({"inline": True, "one_time": False, "buttons": buttons})
             buttons, count = [], 0
         buttons.append(row)
         count += len(row)
-    pages.append({"inline": True, "buttons": buttons})
+    pages.append({"inline": True, "one_time": False, "buttons": buttons})
     for index, page in enumerate(pages):
         nav = []
         for target, label in ((index - 1, "Назад"), (index + 1, "Далее")):

@@ -312,7 +312,7 @@ def dispatch_update(api: TelegramApi, controller: BotController,
                 api.send_action({
                     "method": "editMessageText", "chat_id": chat_id,
                     "message_id": message_id,
-                    "text": help_text() if topic == "menu" else help_text(topic),
+                    "text": help_text("" if topic == "menu" else topic, api=api),
                     "reply_markup": help_keyboard("" if topic == "menu" else topic),
                 })
             except TelegramApiError:

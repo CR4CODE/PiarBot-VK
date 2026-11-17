@@ -56,6 +56,8 @@ def download(api, item, remaining):
 
 
 def pack(api, chat, items):
+    if len(items) > COUNT:
+        raise ValueError("В одном архиве может быть до 32 файлов.")
     output = BytesIO()
     remaining = LIMIT
     used = set()
@@ -139,13 +141,19 @@ def handle(ctx, unpacking=False):
     arg = ctx.argument.strip().lower()
     try:
         if unpacking or not arg:
-            item = attachment(ctx.selected_message() or {})
+            selected = ctx.selected_message() or {}
+            item = attachment(selected)
             if not item:
                 raise ValueError(UNZIP_GUIDE if unpacking else ZIP_GUIDE)
             if unpacking:
                 unpack(ctx.api, chat, item)
             else:
-                pack(ctx.api, chat, [item])
+                items = [item]
+                for part in selected.get("_vk_other_attachments", ()):
+                    extra = attachment(part)
+                    if extra:
+                        items.append(extra)
+                pack(ctx.api, chat, items)
         elif arg == "start":
             if chat in sessions.active:
                 raise ValueError("Сбор уже идёт. Используй .zip done или .zip cancel.")

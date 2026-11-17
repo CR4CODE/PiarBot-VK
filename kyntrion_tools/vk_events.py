@@ -126,6 +126,11 @@ def _callback(raw, api):
     }}]
 
 
+def group_command_text(text, group_id):
+    """VK clients can address a group as [club<ID>|<display name>], .command."""
+    return re.sub(rf"^\[club{group_id}\|[^\]\r\n]+\][,:]?\s*", "", text)
+
+
 def normalize_events(event: dict, group_id: int, api: EventApi) -> list[dict]:
     """CMIDs are local to a peer. Never substitute a global ID or a forwarded actor."""
     if (not _positive(group_id) or not isinstance(event, dict)
@@ -151,7 +156,10 @@ def normalize_events(event: dict, group_id: int, api: EventApi) -> list[dict]:
     if isinstance(reply, dict):
         if reply.get("peer_id", peer) != peer:
             return []
-        selected = {"chat": chat, **_parts(reply, api)[0]}
+        reply_parts = _parts(reply, api)
+        selected = {"chat": chat, **reply_parts[0]}
+        if len(reply_parts) > 1:
+            selected["_vk_other_attachments"] = reply_parts[1:]
         if type(reply.get("from_id")) is int:
             selected["from"] = _sender(reply["from_id"])
         if _positive(reply.get("conversation_message_id")):
@@ -160,9 +168,7 @@ def normalize_events(event: dict, group_id: int, api: EventApi) -> list[dict]:
 
     parts = _parts(raw, api)
     if chat["type"] == "group" and "text" in parts[0]:
-        parts[0]["text"] = re.sub(
-            rf"^\[club{group_id}\|[^\]\r\n]+\][,:]?\s*", "", parts[0]["text"],
-        )
+        parts[0]["text"] = group_command_text(parts[0]["text"], group_id)
     forwards = raw.get("fwd_messages")
     if not isinstance(forwards, list):
         forwards = []
