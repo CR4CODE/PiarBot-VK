@@ -1,7 +1,6 @@
 """KYNTRION section of PiarBot's existing user Long Poll dispatcher."""
 
 from contextlib import ExitStack, closing
-from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
@@ -9,7 +8,6 @@ import sqlite3
 import time
 
 from kyntrion_tools.command_catalog import parse_dot
-from kyntrion_tools.post_studio_scheduler import run_due
 from kyntrion_tools.vk_api import VkApiError
 from kyntrion_tools.vk_app import PollState, consume, features
 from kyntrion_tools.vk_events import group_command_text
@@ -33,11 +31,10 @@ def _partner_source(ref):
 
 
 class PiarExtension:
-    def __init__(self, api, group_id, state_dir, env, owner_lookup=None, community_wall=None):
+    def __init__(self, api, group_id, state_dir, env, owner_lookup=None):
         self.api = api
         self.group_id = group_id
         self.owner_lookup = owner_lookup
-        self.community_wall = community_wall
         self.state_dir = state_dir
         self.env = dict(env)
         if owner_lookup is not None:
@@ -47,7 +44,7 @@ class PiarExtension:
         try:
             self.feature_resources = self.resources.enter_context(ExitStack())
             self.controller, self.marketing, self.options = self.feature_resources.enter_context(
-                features(api, group_id, state_dir, self.env, community_wall))
+                features(api, group_id, state_dir, self.env))
             path = Path(state_dir) / str(group_id) / "poll.sqlite3"
             self.db = self.resources.enter_context(closing(sqlite3.connect(path)))
             self.state = PollState(self.db)
@@ -71,12 +68,11 @@ class PiarExtension:
         if owner == self.env["VK_OWNER_ID"]:
             return
         # The same polling thread handles PiarBot /setowner and tools events.
-        # Rebind CRM, notifications and scheduled wall jobs before the next action.
+        # Rebind CRM and notifications before the next action.
         env = {**self.env, "VK_OWNER_ID": owner}
-        env.pop("VK_WALL_TOKEN", None)
         with ExitStack() as pending:
             controller, marketing, options = pending.enter_context(
-                features(self.api, self.group_id, self.state_dir, env, self.community_wall))
+                features(self.api, self.group_id, self.state_dir, env))
             controller.sessions = self.controller.sessions
             controller.archive_sessions = self.controller.archive_sessions
             self.feature_resources.close()
@@ -89,9 +85,6 @@ class PiarExtension:
         self._sync_owner()
         self.next_tick = time.monotonic() + 5
         self.options["voice_router"].flush_completed()
-        studio = self.options.get("post_studio")
-        if studio:
-            run_due(studio, studio.store, datetime.now(timezone.utc).isoformat(timespec="seconds"))
         panel = self.options.get("notifications_panel")
         if panel:
             panel.tick()
@@ -167,6 +160,10 @@ class PiarExtension:
                 self._leave(peer)
             return False
         envelope = {"type": "message_new", "group_id": self.group_id, "object": {"message": msg}}
+        if private and str(payload.get("cmd", "")).startswith("post:"):
+            msg = {**msg, "text": "/post", "payload": {}}
+            envelope["object"]["message"] = msg
+            payload = {}
         if private and payload.get("kyntrion") == 1 and "origin" in payload:
             origin = self.api.button_origin(peer, payload["origin"])
             if not origin:

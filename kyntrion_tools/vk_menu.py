@@ -31,14 +31,14 @@ VK_GUIDES = {
 }
 
 
-def send_vk_menu(api, peer, command, studio, news, panel):
+def send_vk_menu(api, peer, command, news, panel):
     markup = None
     if command == "/start":
         text = ("KYNTRION · ВКонтакте\n\n"
                 "Перешли текст для экспорта в TXT или голосовое до 3 минут для обработки. "
                 "Несколько сообщений можно объединить командой /collect.\n"
                 "Архивы: .zip и .unzip. Команды и примеры: /help.")
-        markup = reply_keyboard(include_post_studio=studio)
+        markup = reply_keyboard()
         if getattr(api, "text_buttons", False):
             markup["keyboard"].append([{"text": "⬅️ В меню PiarBot"}])
             text += "\nВернуться в PiarBot — /piar."

@@ -17,7 +17,6 @@ import db_migrations
 from handlers import private as h_private
 from handlers import chat as h_chat
 from kyntrion_tools.vk_app import make_api
-from kyntrion_tools.vk_api import VkApiError
 from kyntrion_tools.vk_piar import PiarExtension
 import keyboards
 import os
@@ -111,19 +110,9 @@ def main() -> None:
 
     longpoll = VkLongPoll(session, group_id=VK_GROUP_ID, wait=5)
     env = dict(os.environ)
-    def community_wall(method, **params):
-        # Use the same authenticated VK session as release.publish_wall().
-        try:
-            return session.method(method, params)
-        except vk_api.ApiError as exc:
-            raise VkApiError(f"VK {method}: {exc.code}") from None
-        except requests.RequestException:
-            raise VkApiError("Результат запроса к стене ВК неизвестен") from None
-
     extension = PiarExtension(make_api(env), VK_GROUP_ID,
                               Path(__file__).parent / "data" / "kyntrion", env,
-                              owner_lookup=lambda: db.get_config("owner_id", "0"),
-                              community_wall=community_wall)
+                              owner_lookup=lambda: db.get_config("owner_id", "0"))
     log.info("KYNTRION ready group=%s", VK_GROUP_ID)
     log.info("👂 LongPoll запущен. ЛС: %s", BOT_LINK)
 

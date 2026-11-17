@@ -2,7 +2,6 @@
 
 import argparse
 from contextlib import ExitStack, closing, contextmanager
-from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import logging
@@ -22,8 +21,6 @@ from kyntrion_tools.kyntrion_crm import CRMAddon
 from kyntrion_tools.kyntrion_marketing import MarketingAddon, MarketingConfig
 from kyntrion_tools.kyntrion_portfolio import PortfolioAddon
 from kyntrion_tools.notification_panel import OwnerNotificationPanel
-from kyntrion_tools.post_studio_scheduler import run_due
-from kyntrion_tools.post_studio_store import PostStudioStore
 from kyntrion_tools.telegram_api import TelegramApi
 from kyntrion_tools.vk_api import VkApi, VkApiError
 from kyntrion_tools.vk_events import normalize_events
@@ -53,22 +50,8 @@ def make_api(env):
     return VkApi(token, group_id, transcriber=asr)
 
 
-def owner_wall_api(token, group_id, owner):
-    if not token:
-        return None
-    api = VkApi(token, group_id)
-
-    def call(method, **params):
-        users = api.call("users.get")
-        if not users or users[0].get("id") != owner:
-            raise VkApiError("Ключ стены принадлежит другому владельцу")
-        return api.call(method, **params)
-
-    return call
-
-
 @contextmanager
-def features(api, group_id, state_dir, env, community_wall=None):
+def features(api, group_id, state_dir, env):
     root = Path(state_dir) / str(group_id)
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     owner = positive_id(env, "VK_OWNER_ID") if env.get("VK_OWNER_ID") else None
@@ -85,13 +68,9 @@ def features(api, group_id, state_dir, env, community_wall=None):
                 root / "marketing.sqlite3", owner, platform_name="VK")))
             ai = (AIClient(env["VK_CONSULT_URL"], env.get("VK_WORKER_SECRET", ""))
                   if env.get("VK_CONSULT_URL") else None)
-            from kyntrion_tools.vk_studio import VKPostStudio
-            wall = owner_wall_api(env.get("VK_WALL_TOKEN"), group_id, owner) or community_wall
-            studio = VKPostStudio(api, manage(PostStudioStore(root / "studio.sqlite3")),
-                                  group_id, owner, wall_call=wall)
             options.update(portfolio=PortfolioAddon(marketing), catalog=CatalogAddon(marketing),
                            crm=CRMAddon(marketing), consultation=ConsultationAddon(marketing, ai),
-                           post_studio=studio, notifications_panel=OwnerNotificationPanel(
+                           notifications_panel=OwnerNotificationPanel(
                                api, news, owner, delivery_enabled=(
                                    env.get("VK_NEWS_DELIVERY", "").lower() == "true")))
         # Group commands use the actual event sender. The shared router's owner
@@ -149,6 +128,11 @@ def consume(api, group_id, state, event, controller, marketing, options):
         return
     updates = normalize_events(event, group_id, api)
     for update in updates:
+        callback = update.get("callback_query", {})
+        if callback.get("data", "").startswith("post:"):
+            api.send_action({"method": "answerCallbackQuery", "callback_query_id": callback["id"],
+                             "text": "Публикации создавайте вручную на стене сообщества ВКонтакте."})
+            continue
         msg = update.get("message", {})
         chat = msg.get("chat", {})
         peer = chat.get("id")
@@ -158,6 +142,9 @@ def consume(api, group_id, state, event, controller, marketing, options):
         if not forwarded and chat.get("type") == "private" and peer == msg.get("from", {}).get("id"):
             words = (msg.get("text") or "").split(maxsplit=1)
             cmd = words[0].lower() if words else ""
+            if cmd == "/post" or (msg.get("text") or "").strip() == "🎨 Студия постов":
+                api.send_message(peer, "Публикации создавайте вручную на стене сообщества ВКонтакте.")
+                continue
             if cmd == "/forget_me":
                 controller.sessions.pop((peer, peer), None)
                 controller.archive_sessions.active.pop(peer, None)
@@ -197,9 +184,6 @@ def run(api, env):
                     LOG.warning("Long Poll недоступен (%s)", type(exc).__name__)
                     time.sleep(min(2 ** min(failures, 5), 30))
                 options["voice_router"].flush_completed()
-                studio = options.get("post_studio")
-                if studio:
-                    run_due(studio, studio.store, datetime.now(timezone.utc).isoformat(timespec="seconds"))
                 if panel:
                     panel.tick()
 

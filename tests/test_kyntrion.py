@@ -4,32 +4,11 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 import zipfile
 
 from kyntrion_tools.vk_api import VkApi
 from kyntrion_tools.vk_piar import PiarExtension
-from kyntrion_tools.post_studio_scheduler import run_due
-from setup_wall import check_owner, save_token
-
-
-class WallSetupTests(unittest.TestCase):
-    def test_reject_other_user_or_wrong_wall(self):
-        with patch("setup_wall.VkApi") as factory:
-            factory.return_value.call.side_effect = [[{"id": 16}]]
-            with self.assertRaises(ValueError):
-                check_owner("dummy", 7, 5)
-            factory.return_value.call.side_effect = [[{"id": 5}], 8192,
-                                                     {"groups": [{"id": 8, "admin_level": 3}]}]
-            with self.assertRaises(ValueError):
-                check_owner("dummy", 7, 5)
-
-    def test_save_changes_only_wall_token(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / ".env"
-            path.write_text("VK_GROUP_ID=7\nVK_WALL_TOKEN=old\n", encoding="utf-8")
-            save_token(path, "replacement")
-            self.assertEqual(path.read_text().splitlines(), ["VK_GROUP_ID=7", "VK_WALL_TOKEN=replacement"])
 
 
 class PiarToolsTests(unittest.TestCase):
@@ -44,9 +23,7 @@ class PiarToolsTests(unittest.TestCase):
         self.api.call = self.call
         self.api.send_document = lambda peer, name, data, *a, **kw: self.docs.append((peer, name, data))
         self.back = Mock()
-        self.wall = Mock(return_value={"post_id": 42})
-        self.ext = PiarExtension(self.api, 7, Path(tmp.name), {"VK_OWNER_ID": "5"},
-                                 community_wall=self.wall)
+        self.ext = PiarExtension(self.api, 7, Path(tmp.name), {"VK_OWNER_ID": "5"})
         self.addCleanup(self.ext.close)
 
     def call(self, method, **params):
@@ -96,6 +73,31 @@ class PiarToolsTests(unittest.TestCase):
         self.assertEqual((method, edit["cmid"]), ("messages.edit", expected_id))
         self.assertFalse(self.send(button["label"], uid=6, payload=button["payload"]))
 
+    def test_removed_studio_entry_points_preserve_collect_and_show_manual_guidance(self):
+        self.send("/kyntrion")
+        for method, params in self.calls:
+            if method == "messages.send" and "keyboard" in params:
+                keyboard = json.loads(params["keyboard"])
+                for row in keyboard["buttons"]:
+                    for button in row:
+                        action = button["action"]
+                        self.assertNotIn("Студия", action.get("label", ""))
+                        self.assertNotIn("post:", action.get("payload", ""))
+        self.assertNotIn("post_studio", self.ext.options)
+        self.send("/collect")
+        self.send("мой текст")
+        old_payload = json.dumps({"kyntrion": 1, "cmd": "post:confirm:old", "origin": "expired"})
+        for text, extra in (("/post", {}), ("/post text Пост", {}),
+                            ("🎨 Студия постов", {}), ("Опубликовать", {"payload": old_payload})):
+            with self.subTest(text=text):
+                self.assertTrue(self.send(text, **extra))
+                self.assertEqual(self.calls[-1][0], "messages.send")
+                self.assertIn("вручную", self.calls[-1][1]["message"])
+        self.ext.tick()
+        self.send("/done")
+        self.assertEqual([data.decode() for _, _, data in self.docs], ["мой текст"])
+        self.assertFalse((Path(self.ext.state_dir) / "7" / "studio.sqlite3").exists())
+
     def test_owner_transfer_revokes_old_panel_and_preserves_collect(self):
         self.ext.owner_lookup = lambda: "5"
         self.send("/kyntrion")
@@ -105,7 +107,7 @@ class PiarToolsTests(unittest.TestCase):
         self.send("/done")
         self.assertEqual(self.docs[-1][2].decode(), "до передачи")
         self.assertEqual(self.ext.options["notifications_panel"].owner_id, 6)
-        self.assertEqual(self.ext.options["post_studio"].owner_id, 6)
+        self.assertEqual(self.ext.options["crm"].owner, 6)
 
     def test_addressed_group_command_returns_selected_text_to_its_sender(self):
         peer = 2_000_000_001
@@ -147,27 +149,3 @@ class PiarToolsTests(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(self.docs[0][2])) as archive:
             self.assertEqual(archive.read("текст.txt"), b"11")
             self.assertEqual(archive.read("текст (2).txt"), b"12")
-
-    def test_wall_requires_confirmation_and_owner(self):
-        studio = self.ext.options["post_studio"]
-        draft = studio.store.create_draft(5, -7)
-        studio.store.patch_draft(5, draft, {"text": "Новая запись"}, 1)
-        token = studio.request_publish(5, draft)
-        studio.wall_call.assert_not_called()
-        self.assertNotEqual(studio.confirm_publish(88, token), "published")
-        self.assertEqual(studio.confirm_publish(5, token), "published")
-        studio.confirm_publish(5, token)
-        studio.wall_call.assert_called_once_with("wall.post", owner_id=-7, from_group=1,
-                                                message="Новая запись", attachments="")
-
-    def test_moscow_schedule_uses_host_wall_once(self):
-        studio = self.ext.options["post_studio"]
-        draft = studio.store.create_draft(5, -7)
-        studio.store.patch_draft(5, draft, {"text": "Запись по расписанию"}, 1)
-        studio.store.set_timezone(5, "Europe/Moscow")
-        job = studio.schedule_draft(5, draft, "2030-04-03 15:00")
-        self.assertEqual(run_due(studio, studio.store, "2030-04-03T11:59:00+00:00"), [])
-        self.assertEqual(run_due(studio, studio.store, "2030-04-03T12:00:00+00:00"), [(job, "published")])
-        self.assertEqual(run_due(studio, studio.store, "2030-04-03T12:01:00+00:00"), [])
-        self.wall.assert_called_once_with("wall.post", owner_id=-7, from_group=1,
-                                          message="Запись по расписанию", attachments="")

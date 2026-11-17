@@ -41,8 +41,7 @@ def _send_menu(api: TelegramApi, chat_id: int, command: str,
     """Show a top-level menu page; return True only for owned commands."""
     if getattr(api, "platform", None) == "vk":
         from kyntrion_tools.vk_menu import send_vk_menu
-        if send_vk_menu(api, chat_id, command, post_studio_enabled,
-                        notifications_enabled, notifications_panel):
+        if send_vk_menu(api, chat_id, command, notifications_enabled, notifications_panel):
             return True
     if command == "/automation":
         page = automation_page("menu")
